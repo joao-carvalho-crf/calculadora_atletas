@@ -8,16 +8,16 @@ st.set_page_config(
     layout="wide",
 )
 
-'''# Set the locale for number formatting
-import subprocess
+# Set the locale for number formatting
+#import subprocess
 
 # Install the pt_BR locale
-subprocess.run(["sudo", "locale-gen", "pt_BR.UTF-8"])
-try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except locale.Error:
-    st.warning("A localização 'pt_BR.UTF-8' não está disponível no sistema. A formatação de números pode não estar correta.")
-'''
+#subprocess.run(["sudo", "locale-gen", "pt_BR.UTF-8"])
+#try:
+#    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+#except locale.Error:
+#    st.warning("A localização 'pt_BR.UTF-8' não está disponível no sistema. A formatação de números pode não estar correta.")
+
     
 st.title("Calculadora de Compra e Venda de Atletas")
 
