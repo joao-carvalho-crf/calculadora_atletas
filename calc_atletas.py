@@ -1,6 +1,12 @@
 import streamlit as st
 import requests
-#import locale
+import locale
+
+# Set the locale for number formatting
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    st.warning("A localização 'pt_BR.UTF-8' não está disponível no sistema. A formatação de números pode não estar correta.")
 
 st.set_page_config(
     page_title="Calculadora de Compra e Venda de Atletas",
@@ -8,17 +14,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# Set the locale for number formatting
-#import subprocess
-
-# Install the pt_BR locale
-#subprocess.run(["sudo", "locale-gen", "pt_BR.UTF-8"])
-#try:
-#    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-#except locale.Error:
-#    st.warning("A localização 'pt_BR.UTF-8' não está disponível no sistema. A formatação de números pode não estar correta.")
-
-    
 st.title("Calculadora de Compra e Venda de Atletas")
 
 # --- Sidebar for Exchange Rate Selection ---
@@ -28,27 +23,28 @@ with st.sidebar:
         "Selecione a cotação Euro / Real:",
         ["Câmbio atual", "Valor fixo"],
     )
+    
+    # Fetch and display current exchange rate if "Câmbio atual" is selected
+    if cotacao_opcao == "Câmbio atual":
+        with st.spinner('Obtendo cotação atual...'):
+            try:
+                response = requests.get("https://economia.awesomeapi.com.br/last/EUR-BRL")
+                response.raise_for_status()
+                data = response.json()
+                cotacao_atual = float(data['EURBRL']['bid'])
+                st.metric(label="Câmbio Atual (EUR/BRL)", value=f"R$ {cotacao_atual:.4f}")
+            except requests.exceptions.RequestException as e:
+                st.error(f"Erro ao obter a cotação atual do Euro: {e}")
+            except (KeyError, ValueError):
+                st.error("Erro ao processar a resposta da API de cotação.")
+
     valor_cotacao_fixa = None
     if cotacao_opcao == "Valor fixo":
         valor_cotacao_fixa = st.number_input("Valor da cotação fixa:", min_value=0.0001, step=0.01)
 
-@st.cache_resource
-def obter_cotacao_euro():
-    """Obtém a cotação atual do Euro usando a Awesome API."""
-    try:
-        response = requests.get("https://economia.awesomeapi.com.br/last/EUR-BRL")
-        response.raise_for_status()  # Lança uma exceção para status de erro
-        data = response.json()
-        return float(data['EURBRL']['bid'])
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao obter a cotação atual do Euro: {e}")
-        return None
-    except (KeyError, ValueError):
-        st.error("Erro ao processar a resposta da API de cotação.")
-        return None
-
 def formatar_numero_br(number):
-    return "{:,.0f}".format(number).replace(",", ".")
+    """Formata o número para o padrão brasileiro sem casas decimais."""
+    return locale.format_string("%d", number, grouping=True)
 
 def calcular_valor_liquido(valor_euros_milhoes, perc_repasse, perc_intermediacao, venda_exterior, cotacao):
     valor_euros = valor_euros_milhoes * 1_000_000
@@ -63,10 +59,11 @@ def calcular_custo_total(valor_euros_milhoes, perc_intermediacao, compra_exterio
     custo_total = valor_euros * cotacao * (1 + perc_intermediacao/100 + perc_iof + perc_ir)
     return custo_total
 
-# --- Fetch Exchange Rate (only once per run) ---
+# --- Use cached exchange rate if available, otherwise fetch ---
 cotacao_usada = None
 if cotacao_opcao == "Câmbio atual":
-    cotacao_usada = obter_cotacao_euro()
+    if 'cotacao_atual' in locals():  # Check if cotacao_atual was fetched successfully
+        cotacao_usada = cotacao_atual
 elif cotacao_opcao == "Valor fixo":
     cotacao_usada = valor_cotacao_fixa
 
@@ -85,8 +82,6 @@ with col_venda:
     if valor_euros_venda_milhoes is not None and perc_repasse_venda is not None and perc_intermediacao_venda is not None and cotacao_usada is not None:
         valor_liquido = calcular_valor_liquido(valor_euros_venda_milhoes, perc_repasse_venda, perc_intermediacao_venda, venda_exterior, cotacao_usada)
         st.success(f"Valor Líquido da Venda: R$ {formatar_numero_br(int(valor_liquido))}")
-        if cotacao_opcao == "Câmbio atual" and cotacao_usada:
-            st.caption(f"Câmbio utilizado: R$ {cotacao_usada:.4f} por Euro")
 
 # --- Seção de Compra ---
 with col_compra:
@@ -99,8 +94,6 @@ with col_compra:
     if valor_euros_compra_milhoes is not None and perc_intermediacao_compra is not None and cotacao_usada is not None:
         custo_total = calcular_custo_total(valor_euros_compra_milhoes, perc_intermediacao_compra, compra_exterior, cotacao_usada)
         st.success(f"Custo Total da Compra: R$ {formatar_numero_br(int(custo_total))}")
-        if cotacao_opcao == "Câmbio atual" and cotacao_usada:
-            st.caption(f"Câmbio utilizado: R$ {cotacao_usada:.4f} por Euro")
 
 # --- Saldo Líquido ---
 st.header("Saldo Líquido")
