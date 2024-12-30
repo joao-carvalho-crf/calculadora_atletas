@@ -1,13 +1,7 @@
 import streamlit as st
 import requests
-import locale
 
-# Set the locale for number formatting
-try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except locale.Error:
-    st.warning("A localização 'pt_BR.UTF-8' não está disponível no sistema. A formatação de números pode não estar correta.")
-
+# The error happens because this should be the first streamlit command
 st.set_page_config(
     page_title="Calculadora de Compra e Venda de Atletas",
     page_icon=":soccer:",
@@ -16,14 +10,14 @@ st.set_page_config(
 
 st.title("Calculadora de Compra e Venda de Atletas")
 
-# --- Sidebar for Exchange Rate Selection ---
+# --- Sidebar for Exchange Rate Selection and Display ---
 with st.sidebar:
     st.header("Configurações de Cotação")
     cotacao_opcao = st.selectbox(
         "Selecione a cotação Euro / Real:",
         ["Câmbio atual", "Valor fixo"],
     )
-    
+
     # Fetch and display current exchange rate if "Câmbio atual" is selected
     if cotacao_opcao == "Câmbio atual":
         with st.spinner('Obtendo cotação atual...'):
@@ -35,16 +29,17 @@ with st.sidebar:
                 st.metric(label="Câmbio Atual (EUR/BRL)", value=f"R$ {cotacao_atual:.4f}")
             except requests.exceptions.RequestException as e:
                 st.error(f"Erro ao obter a cotação atual do Euro: {e}")
+                cotacao_atual = None  # Set to None on error
             except (KeyError, ValueError):
                 st.error("Erro ao processar a resposta da API de cotação.")
+                cotacao_atual = None  # Set to None on error
 
     valor_cotacao_fixa = None
     if cotacao_opcao == "Valor fixo":
         valor_cotacao_fixa = st.number_input("Valor da cotação fixa:", min_value=0.0001, step=0.01)
 
 def formatar_numero_br(number):
-    """Formata o número para o padrão brasileiro sem casas decimais."""
-    return locale.format_string("%d", number, grouping=True)
+    return "{:,.0f}".format(number).replace(",", ".")
 
 def calcular_valor_liquido(valor_euros_milhoes, perc_repasse, perc_intermediacao, venda_exterior, cotacao):
     valor_euros = valor_euros_milhoes * 1_000_000
@@ -59,11 +54,10 @@ def calcular_custo_total(valor_euros_milhoes, perc_intermediacao, compra_exterio
     custo_total = valor_euros * cotacao * (1 + perc_intermediacao/100 + perc_iof + perc_ir)
     return custo_total
 
-# --- Use cached exchange rate if available, otherwise fetch ---
+# --- Use cached exchange rate if available, otherwise use fixed or None ---
 cotacao_usada = None
 if cotacao_opcao == "Câmbio atual":
-    if 'cotacao_atual' in locals():  # Check if cotacao_atual was fetched successfully
-        cotacao_usada = cotacao_atual
+    cotacao_usada = cotacao_atual  # Use the fetched rate if available
 elif cotacao_opcao == "Valor fixo":
     cotacao_usada = valor_cotacao_fixa
 
@@ -82,6 +76,8 @@ with col_venda:
     if valor_euros_venda_milhoes is not None and perc_repasse_venda is not None and perc_intermediacao_venda is not None and cotacao_usada is not None:
         valor_liquido = calcular_valor_liquido(valor_euros_venda_milhoes, perc_repasse_venda, perc_intermediacao_venda, venda_exterior, cotacao_usada)
         st.success(f"Valor Líquido da Venda: R$ {formatar_numero_br(int(valor_liquido))}")
+    elif cotacao_opcao == "Câmbio atual" and cotacao_usada is None:
+        st.error("Não foi possível obter a cotação atual. Por favor, verifique sua conexão com a internet ou tente novamente mais tarde.")
 
 # --- Seção de Compra ---
 with col_compra:
@@ -94,6 +90,8 @@ with col_compra:
     if valor_euros_compra_milhoes is not None and perc_intermediacao_compra is not None and cotacao_usada is not None:
         custo_total = calcular_custo_total(valor_euros_compra_milhoes, perc_intermediacao_compra, compra_exterior, cotacao_usada)
         st.success(f"Custo Total da Compra: R$ {formatar_numero_br(int(custo_total))}")
+    elif cotacao_opcao == "Câmbio atual" and cotacao_usada is None:
+        st.error("Não foi possível obter a cotação atual. Por favor, verifique sua conexão com a internet ou tente novamente mais tarde.")
 
 # --- Saldo Líquido ---
 st.header("Saldo Líquido")
